@@ -12,3 +12,9 @@ spring:
 server:
   port: ${PORT:8081}
 
+logging:
+  level:
+    org.springframework.web: DEBUG
+    org.springframework.ai: DEBUG
+    io.modelcontextprotocol: DEBUG
+    reactor.netty: DEBUG
