@@ -11,6 +11,8 @@ spring:
         type: ASYNC
         request-timeout: 120s
 
+server:
+  port: ${SERVER_PORT:8081}
 logging:
   level:
     org.springframework.ai.*: DEBUG
