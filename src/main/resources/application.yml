@@ -1,0 +1,14 @@
+# For WebMVC SSE transport (recommended for localhost)
+spring:
+  main:
+    banner-mode: off
+  ai:
+    mcp:
+      server:
+        name: my-mcp-server
+        version: 1.0.0
+        type: async
+
+server:
+  port: ${PORT:8081}
+
