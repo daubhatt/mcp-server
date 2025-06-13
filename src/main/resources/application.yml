@@ -1,20 +1,20 @@
 # For WebMVC SSE transport (recommended for localhost)
 spring:
   main:
-    banner-mode: off
+    banner-mode: log
+    web-application-type: reactive
   ai:
     mcp:
       server:
         name: my-mcp-server
         version: 1.0.0
-        type: async
-
-server:
-  port: ${PORT:8081}
+        type: ASYNC
+        request-timeout: 120s
 
 logging:
   level:
-    org.springframework.web: DEBUG
-    org.springframework.ai: DEBUG
-    io.modelcontextprotocol: DEBUG
-    reactor.netty: DEBUG
+    org.springframework.ai.*: DEBUG
+  pattern:
+    console: "%clr(%d{yy-MM-dd E HH:mm:ss.SSS}){blue} %clr(%-5p) %clr(${PID}){faint} %clr(---){faint} %clr([%8.15t]){cyan} %clr(%-40.40logger{0}){blue} %clr(:){red} %clr(%m){faint}%n"
+
+
