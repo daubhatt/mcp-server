@@ -17,5 +17,4 @@ public class McpServerApplication {
 	public ToolCallbackProvider bankingTools(BankingService bankingService) {
 		return MethodToolCallbackProvider.builder().toolObjects(bankingService).build();
 	}
-
 }

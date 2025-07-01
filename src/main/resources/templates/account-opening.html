@@ -1,0 +1,133 @@
+<!-- account-opening.html -->
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Opening - Banking Portal</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-br from-green-50 to-teal-100 min-h-screen">
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-8">
+        <div class="text-center mb-8">
+            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-university text-3xl text-green-600"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2"><span th:text="${currency}">USD</span> Account Opening</h1>
+            <p class="text-gray-600">Open a new currency account to enable transfers and conversions</p>
+        </div>
+
+        <div class="space-y-6">
+            <!-- Customer Info -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Account Details</h3>
+                <p><strong>Customer ID:</strong> <span th:text="${customerId}">CUSTOMER_ID</span></p>
+                <p><strong>Currency:</strong> <span th:text="${currency}">USD</span></p>
+                <p><strong>Account Type:</strong> Multi-Currency Savings Account</p>
+            </div>
+
+            <!-- Account Benefits -->
+            <div class="space-y-4">
+                <h3 class="font-semibold text-gray-700">Account Benefits</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="flex items-start space-x-3 p-4 bg-green-50 rounded-lg">
+                        <i class="fas fa-check-circle text-green-600 mt-1"></i>
+                        <div>
+                            <h4 class="font-semibold text-gray-700">Competitive Exchange Rates</h4>
+                            <p class="text-sm text-gray-600">Get preferential rates for currency conversions</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3 p-4 bg-green-50 rounded-lg">
+                        <i class="fas fa-globe text-green-600 mt-1"></i>
+                        <div>
+                            <h4 class="font-semibold text-gray-700">International Transfers</h4>
+                            <p class="text-sm text-gray-600">Send money globally with ease</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3 p-4 bg-green-50 rounded-lg">
+                        <i class="fas fa-shield-alt text-green-600 mt-1"></i>
+                        <div>
+                            <h4 class="font-semibold text-gray-700">No Monthly Fees</h4>
+                            <p class="text-sm text-gray-600">Zero maintenance charges</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3 p-4 bg-green-50 rounded-lg">
+                        <i class="fas fa-mobile-alt text-green-600 mt-1"></i>
+                        <div>
+                            <h4 class="font-semibold text-gray-700">Mobile Banking</h4>
+                            <p class="text-sm text-gray-600">Manage your account on the go</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terms and Conditions -->
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                <div class="flex">
+                    <i class="fas fa-exclamation-triangle text-yellow-400 mt-1"></i>
+                    <div class="ml-3">
+                        <p class="text-sm text-yellow-700">
+                            <strong>Important:</strong> Minimum opening balance of <span th:text="${currency}">USD</span> 100 required. Account will be activated within 1 business day.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Application Form -->
+            <div class="space-y-4">
+                <h3 class="font-semibold text-gray-700">Application Information</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Purpose of Account</label>
+                        <select class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                            <option>International Transfers</option>
+                            <option>Business Transactions</option>
+                            <option>Investment Purposes</option>
+                            <option>Travel Expenses</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Expected Monthly Volume</label>
+                        <select class="w-full border border-gray-300 rounded-lg px-3 py-2">
+                            <option>Less than $5,000</option>
+                            <option>$5,000 - $25,000</option>
+                            <option>$25,000 - $100,000</option>
+                            <option>More than $100,000</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="text-center pt-4">
+                <button id="submitAccountBtn" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition duration-200 font-semibold">
+                    <i class="fas fa-plus mr-2"></i>
+                    Open <span th:text="${currency}">USD</span> Account
+                </button>
+            </div>
+
+            <!-- Success Message -->
+            <div id="successMessage" class="hidden bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
+                <i class="fas fa-check-circle mr-2"></i>
+                <strong>Account Opening Initiated!</strong> Your <span th:text="${currency}">USD</span> account will be ready shortly. Return to your chat to continue with your transaction.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('submitAccountBtn').addEventListener('click', function() {
+        // Simulate processing
+        this.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing Application...';
+        this.disabled = true;
+
+        setTimeout(() => {
+            this.classList.add('hidden');
+            document.getElementById('successMessage').classList.remove('hidden');
+        }, 3000);
+    });
+</script>
+</body>
+</html>

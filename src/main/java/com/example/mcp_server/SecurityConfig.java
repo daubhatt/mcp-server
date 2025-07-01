@@ -1,3 +1,4 @@
+/*
 package com.example.mcp_server;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -32,3 +33,4 @@ class SecurityConfig {
     }
 
 }
+*/

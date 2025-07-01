@@ -1,17 +1,18 @@
 package com.example.mcp_server;
 
 import com.example.mcp_server.BankingRecords.*;
+import com.example.mcp_server.EnhancedBankingRecords.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Slf4j
@@ -25,6 +26,38 @@ public class BankingService {
             "Fatima", "Fatima Al-Zahra",
             "Omar", "Omar Abdullah"
     );
+
+    // Simulation state storage for enhanced features
+    private final Map<String, String> customerKycStatus = new ConcurrentHashMap<>();
+    private final Map<String, String> customerTokenStatus = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> customerCurrencyAccounts = new ConcurrentHashMap<>();
+    private final Map<String, String> pendingTransactions = new ConcurrentHashMap<>();
+
+    // Initialize default states
+    {
+        // Default KYC statuses
+        customerKycStatus.put("Aman", "BASIC");
+        customerKycStatus.put("Sarah", "ENHANCED");
+        customerKycStatus.put("Ahmed", "BASIC");
+        customerKycStatus.put("Fatima", "ENHANCED");
+        customerKycStatus.put("Omar", "BASIC");
+
+        // Default token statuses
+        customerTokenStatus.put("Aman", "BASIC");
+        customerTokenStatus.put("Sarah", "ELEVATED");
+        customerTokenStatus.put("Ahmed", "BASIC");
+        customerTokenStatus.put("Fatima", "BASIC");
+        customerTokenStatus.put("Omar", "ELEVATED");
+
+        // Default currency accounts (AED for everyone, USD only for some)
+        customerCurrencyAccounts.put("Aman", new HashSet<>(Set.of("AED")));
+        customerCurrencyAccounts.put("Sarah", new HashSet<>(Set.of("AED", "USD")));
+        customerCurrencyAccounts.put("Ahmed", new HashSet<>(Set.of("AED")));
+        customerCurrencyAccounts.put("Fatima", new HashSet<>(Set.of("AED", "USD")));
+        customerCurrencyAccounts.put("Omar", new HashSet<>(Set.of("AED")));
+    }
+
+    // ======== ORIGINAL BANKING TOOLS ========
 
     @Tool(description = "Retrieve a list of accounts for a customer")
     public GetAccountsResponse getAccounts(GetAccountsRequest accountsRequest, ToolContext context) {
@@ -79,6 +112,433 @@ public class BankingService {
         log.info("Retrieving investment portfolio for customerId: {}", investmentPortfolioRequest.customerId());
         return getInvestmentPortfolioData(investmentPortfolioRequest.customerId());
     }
+
+    // ======== NEW REMITTANCE TOOLS ========
+
+    @Tool(description = "Initiate an international remittance transfer")
+    public RemittanceValidationResponse initiateRemittance(InitiateRemittanceRequest request, ToolContext context) {
+        log.info("Initiating remittance for customer: {} to {}", request.customerId(), request.recipientCountry());
+
+        // Generate transaction ID
+        String transactionId = "REM" + System.currentTimeMillis();
+
+        // Check customer KYC status
+        String kycStatus = customerKycStatus.getOrDefault(request.customerId(), "BASIC");
+
+        // Check token elevation status
+        String tokenStatus = customerTokenStatus.getOrDefault(request.customerId(), "BASIC");
+
+        // Calculate fees and exchange rate
+        BigDecimal fees = calculateRemittanceFees(request.amount(), request.currency());
+        BigDecimal exchangeRate = getExchangeRate(request.currency());
+
+        // High value threshold (equivalent to 15,000 AED)
+        BigDecimal highValueThreshold = new BigDecimal("15000");
+        boolean isHighValue = request.amount().compareTo(highValueThreshold) > 0;
+
+        // International transfer requires ENHANCED KYC
+        if ("BASIC".equals(kycStatus)) {
+            String kycUrl = "http://localhost:8081/kyc-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
+
+            // Store pending transaction for later completion
+            pendingTransactions.put(transactionId, request.customerId() + "|KYC_PENDING");
+
+            return new RemittanceValidationResponse(
+                    transactionId,
+                    "KYC_REQUIRED",
+                    "Enhanced KYC verification required for international transfers. Please complete the verification process and return to continue.",
+                    request.amount(),
+                    request.currency(),
+                    fees,
+                    exchangeRate,
+                    "2-3 business days after KYC completion",
+                    kycUrl,
+                    null,
+                    List.of("Passport", "Employment Certificate", "Salary Certificate"),
+                    LocalDateTime.now()
+            );
+        }
+
+        // High value transfers require token elevation
+        if (isHighValue && "BASIC".equals(tokenStatus)) {
+            String biometricUrl = "http://localhost:8081/biometric-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
+
+            // Store pending transaction for later completion
+            pendingTransactions.put(transactionId, request.customerId() + "|BIOMETRIC_PENDING");
+
+            return new RemittanceValidationResponse(
+                    transactionId,
+                    "TOKEN_ELEVATION_REQUIRED",
+                    "Biometric verification required for high-value transfers above AED 15,000. Please complete the biometric authentication and return to continue.",
+                    request.amount(),
+                    request.currency(),
+                    fees,
+                    exchangeRate,
+                    "1-2 business days after verification",
+                    null,
+                    biometricUrl,
+                    List.of(),
+                    LocalDateTime.now()
+            );
+        }
+
+        // All validations passed - can proceed directly
+        pendingTransactions.put(transactionId, request.customerId() + "|VALIDATED");
+
+        return new RemittanceValidationResponse(
+                transactionId,
+                "VALIDATED",
+                "Transfer validated successfully. You can proceed with the remittance.",
+                request.amount(),
+                request.currency(),
+                fees,
+                exchangeRate,
+                "1-2 business days",
+                null,
+                null,
+                List.of(),
+                LocalDateTime.now()
+        );
+    }
+
+    // NEW TOOL: Process KYC completion from customer
+    @Tool(description = "Process customer KYC completion confirmation after external verification")
+    public SimulationStateResponse processKycCompletion(String customerId, ToolContext context) {
+        log.info("Processing KYC completion for customer: {}", customerId);
+
+        String previousStatus = customerKycStatus.getOrDefault(customerId, "BASIC");
+
+        if ("ENHANCED".equals(previousStatus)) {
+            return new SimulationStateResponse(
+                    customerId,
+                    "KYC_STATUS",
+                    previousStatus,
+                    "ENHANCED",
+                    "Customer already has ENHANCED KYC status."
+            );
+        }
+
+        // Upgrade customer KYC status
+        customerKycStatus.put(customerId, "ENHANCED");
+
+        return new SimulationStateResponse(
+                customerId,
+                "KYC_UPGRADE",
+                previousStatus,
+                "ENHANCED",
+                "KYC successfully upgraded to ENHANCED level. International transfers are now available with daily limits up to AED 25,000."
+        );
+    }
+
+    // NEW TOOL: Process biometric completion from customer
+    @Tool(description = "Process customer biometric verification completion after external authentication")
+    public SimulationStateResponse processBiometricCompletion(String customerId, ToolContext context) {
+        log.info("Processing biometric completion for customer: {}", customerId);
+
+        String previousStatus = customerTokenStatus.getOrDefault(customerId, "BASIC");
+
+        if ("ELEVATED".equals(previousStatus)) {
+            return new SimulationStateResponse(
+                    customerId,
+                    "TOKEN_STATUS",
+                    previousStatus,
+                    "ELEVATED",
+                    "Customer already has ELEVATED token status."
+            );
+        }
+
+        // Elevate customer token status
+        customerTokenStatus.put(customerId, "ELEVATED");
+
+        return new SimulationStateResponse(
+                customerId,
+                "TOKEN_ELEVATION",
+                previousStatus,
+                "ELEVATED",
+                "Token elevated successfully. High-value transfers up to AED 500,000 are now available for 24 hours."
+        );
+    }
+
+    // NEW TOOL: Check pending transaction status
+    @Tool(description = "Check the status of a pending remittance transaction")
+    public PendingTransactionStatusResponse checkPendingTransaction(String transactionId, ToolContext context) {
+        log.info("Checking pending transaction status: {}", transactionId);
+
+        String pendingData = pendingTransactions.get(transactionId);
+
+        if (pendingData == null) {
+            return new PendingTransactionStatusResponse(
+                    transactionId,
+                    "NOT_FOUND",
+                    "Transaction not found or expired",
+                    null,
+                    null,
+                    LocalDateTime.now()
+            );
+        }
+
+        String[] parts = pendingData.split("\\|");
+        String customerId = parts[0];
+        String status = parts.length > 1 ? parts[1] : "UNKNOWN";
+
+        return new PendingTransactionStatusResponse(
+                transactionId,
+                status,
+                "Transaction found with status: " + status,
+                customerId,
+                getNextRequiredAction(status),
+                LocalDateTime.now()
+        );
+    }
+
+    private String getNextRequiredAction(String status) {
+        return switch (status) {
+            case "KYC_PENDING" -> "Complete KYC verification and confirm with 'kyc done'";
+            case "BIOMETRIC_PENDING" -> "Complete biometric verification and confirm with 'additional biometric done'";
+            case "VALIDATED" -> "Transaction ready for execution";
+            default -> "Unknown status";
+        };
+    }
+
+    // Add this record to EnhancedBankingRecords.java
+    public record PendingTransactionStatusResponse(
+            String transactionId,
+            String status,
+            String message,
+            String customerId,
+            String nextRequiredAction,
+            LocalDateTime responseTime
+    ) {}
+
+    // UPDATED: Complete remittance method with proper validation
+    @Tool(description = "Complete a remittance after all verifications are done")
+    public RemittanceExecutionResponse completeRemittance(CompleteRemittanceRequest request, ToolContext context) {
+        log.info("Completing remittance {} for customer: {}", request.transactionId(), request.customerId());
+
+        String pendingData = pendingTransactions.get(request.transactionId());
+
+        if (pendingData == null) {
+            return new RemittanceExecutionResponse(
+                    request.transactionId(),
+                    null,
+                    "FAILED",
+                    "Transaction not found or expired. Please initiate a new transfer.",
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null,
+                    null,
+                    LocalDateTime.now()
+            );
+        }
+
+        String[] parts = pendingData.split("\\|");
+        String customerId = parts[0];
+        String status = parts.length > 1 ? parts[1] : "UNKNOWN";
+
+        // Verify customer matches
+        if (!customerId.equals(request.customerId())) {
+            return new RemittanceExecutionResponse(
+                    request.transactionId(),
+                    null,
+                    "FAILED",
+                    "Transaction belongs to different customer",
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null,
+                    null,
+                    LocalDateTime.now()
+            );
+        }
+
+        // Check if transaction is ready for completion
+        if (!"VALIDATED".equals(status)) {
+            return new RemittanceExecutionResponse(
+                    request.transactionId(),
+                    null,
+                    "PENDING",
+                    "Transaction not ready for completion. Status: " + status + ". Required action: " + getNextRequiredAction(status),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null,
+                    null,
+                    LocalDateTime.now()
+            );
+        }
+
+        // Remove from pending and execute
+        pendingTransactions.remove(request.transactionId());
+
+        // Simulate successful execution
+        String referenceNumber = "REF" + System.currentTimeMillis();
+
+        return new RemittanceExecutionResponse(
+                request.transactionId(),
+                referenceNumber,
+                "PROCESSING",
+                "Remittance initiated successfully. Funds will be credited to recipient within 1-2 business days.",
+                new BigDecimal("5000.00"), // Example amount
+                new BigDecimal("25.00"), // Example fees
+                "Recipient will receive notification",
+                "1-2 business days",
+                LocalDateTime.now()
+        );
+    }
+
+    @Tool(description = "Check if customer has an account in specific currency")
+    public CurrencyAccountResponse checkCurrencyAccount(CheckCurrencyAccountRequest request, ToolContext context) {
+        log.info("Checking currency account for customer: {} currency: {}", request.customerId(), request.currency());
+
+        Set<String> currencies = customerCurrencyAccounts.getOrDefault(request.customerId(), new HashSet<>());
+        boolean hasAccount = currencies.contains(request.currency());
+
+        if (hasAccount) {
+            return new CurrencyAccountResponse(
+                    request.customerId(),
+                    request.currency(),
+                    true,
+                    "ACC" + request.currency() + "_" + request.customerId(),
+                    new BigDecimal("2500.00"), // Example balance
+                    "SUCCESS",
+                    "Customer has " + request.currency() + " account",
+                    null
+            );
+        } else {
+            String openAccountUrl = "http://localhost:8081/account-opening?customerId=" + request.customerId() + "&currency=" + request.currency();
+
+            return new CurrencyAccountResponse(
+                    request.customerId(),
+                    request.currency(),
+                    false,
+                    null,
+                    BigDecimal.ZERO,
+                    "NO_ACCOUNT",
+                    "Customer does not have a " + request.currency() + " account. Would you like to open one?",
+                    openAccountUrl
+            );
+        }
+    }
+
+    @Tool(description = "Convert currency between customer accounts")
+    public CurrencyConversionResponse convertCurrency(CurrencyConversionRequest request, ToolContext context) {
+        log.info("Converting currency for customer: {} from {} to {}",
+                request.customerId(), request.fromCurrency(), request.toCurrency());
+
+        // Check if customer has both currency accounts
+        Set<String> currencies = customerCurrencyAccounts.getOrDefault(request.customerId(), new HashSet<>());
+
+        if (!currencies.contains(request.fromCurrency()) || !currencies.contains(request.toCurrency())) {
+            return new CurrencyConversionResponse(
+                    null,
+                    "FAILED",
+                    "Customer does not have required currency accounts",
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    LocalDateTime.now()
+            );
+        }
+
+        BigDecimal exchangeRate = getExchangeRate(request.fromCurrency(), request.toCurrency());
+        BigDecimal convertedAmount = request.amount().multiply(exchangeRate);
+        BigDecimal fees = request.amount().multiply(new BigDecimal("0.005")); // 0.5% fee
+
+        String transactionId = "FX" + System.currentTimeMillis();
+
+        return new CurrencyConversionResponse(
+                transactionId,
+                "COMPLETED",
+                "Currency conversion completed successfully",
+                convertedAmount.subtract(fees),
+                exchangeRate,
+                fees,
+                LocalDateTime.now()
+        );
+    }
+
+    @Tool(description = "Get customer KYC status and limits")
+    public KycStatusResponse getKycStatus(CustomerKycStatusRequest request, ToolContext context) {
+        log.info("Getting KYC status for customer: {}", request.customerId());
+
+        String kycLevel = customerKycStatus.getOrDefault(request.customerId(), "BASIC");
+
+        return switch (kycLevel) {
+            case "BASIC" -> new KycStatusResponse(
+                    request.customerId(),
+                    "BASIC",
+                    false, // No international transfers
+                    new BigDecimal("5000.00"), // Daily limit
+                    new BigDecimal("50000.00"), // Monthly limit
+                    List.of("Iran", "North Korea", "Syria"), // Restricted countries
+                    "http://localhost:8081/kyc-verification?customerId=" + request.customerId(),
+                    LocalDateTime.now().minusDays(30)
+            );
+            case "ENHANCED" -> new KycStatusResponse(
+                    request.customerId(),
+                    "ENHANCED",
+                    true, // International transfers allowed
+                    new BigDecimal("25000.00"), // Daily limit
+                    new BigDecimal("500000.00"), // Monthly limit
+                    List.of("Iran", "North Korea"), // Fewer restrictions
+                    null,
+                    LocalDateTime.now().minusDays(10)
+            );
+            default -> new KycStatusResponse(
+                    request.customerId(),
+                    "PREMIUM",
+                    true,
+                    new BigDecimal("100000.00"),
+                    new BigDecimal("2000000.00"),
+                    List.of(), // No restrictions
+                    null,
+                    LocalDateTime.now().minusDays(5)
+            );
+        };
+    }
+
+    @Tool(description = "Get remittance transaction history")
+    public RemittanceHistoryResponse getRemittanceHistory(RemittanceHistoryRequest request, ToolContext context) {
+        log.info("Getting remittance history for customer: {}", request.customerId());
+
+        // Sample transaction history
+        List<RemittanceTransaction> transactions = List.of(
+                new RemittanceTransaction(
+                        "REM001",
+                        "REF2024001",
+                        "John Smith",
+                        "United States",
+                        new BigDecimal("5000.00"),
+                        "USD",
+                        "COMPLETED",
+                        new BigDecimal("25.00"),
+                        LocalDateTime.now().minusDays(5),
+                        LocalDateTime.now().minusDays(3),
+                        "Family Support"
+                ),
+                new RemittanceTransaction(
+                        "REM002",
+                        "REF2024002",
+                        "Maria Garcia",
+                        "Philippines",
+                        new BigDecimal("2000.00"),
+                        "PHP",
+                        "PROCESSING",
+                        new BigDecimal("15.00"),
+                        LocalDateTime.now().minusDays(1),
+                        null,
+                        "Personal Transfer"
+                )
+        );
+
+        return new RemittanceHistoryResponse(
+                request.customerId(),
+                transactions,
+                transactions.size(),
+                "SUCCESS",
+                "Remittance history retrieved successfully"
+        );
+    }
+
+    // ======== ORIGINAL BANKING DATA METHODS ========
 
     private GetAccountsResponse getAccountsData(String customerId) {
         if (!CUSTOMER_MAP.containsKey(customerId)) {
@@ -209,13 +669,13 @@ public class BankingService {
                 Balance balance = new Balance(
                         "ACC001",
                         "1234567890",
-                        new BigDecimal("9350.48"), // ~2547.83 USD
-                        new BigDecimal("8616.73"), // ~2347.83 USD
-                        new BigDecimal("733.75"), // ~200.00 USD
+                        new BigDecimal("9350.48"),
+                        new BigDecimal("8616.73"),
+                        new BigDecimal("733.75"),
                         "AED",
                         LocalDateTime.of(2024, 5, 29, 9, 15),
-                        new BigDecimal("1837.50"), // ~500.00 USD
-                        new BigDecimal("367.50"), // ~100.00 USD
+                        new BigDecimal("1837.50"),
+                        new BigDecimal("367.50"),
                         new BigDecimal("156.83"),
                         new BigDecimal("1890.25")
                 );
@@ -230,13 +690,13 @@ public class BankingService {
                 Balance balance = new Balance(
                         "ACC002",
                         "1234567891",
-                        new BigDecimal("55125.00"), // ~15000.00 USD
+                        new BigDecimal("55125.00"),
                         new BigDecimal("55125.00"),
                         BigDecimal.ZERO,
                         "AED",
                         LocalDateTime.of(2024, 5, 29, 9, 15),
                         BigDecimal.ZERO,
-                        new BigDecimal("1837.50"), // ~500.00 USD
+                        new BigDecimal("1837.50"),
                         new BigDecimal("448.12"),
                         new BigDecimal("5125.75")
                 );
@@ -251,13 +711,13 @@ public class BankingService {
                 Balance balance = new Balance(
                         "ACC003",
                         "1234567892",
-                        new BigDecimal("4410.84"), // ~1200.50 USD (credit card balance)
-                        new BigDecimal("3676.84"), // ~1000.50 USD
-                        new BigDecimal("734.00"), // ~200.00 USD
+                        new BigDecimal("4410.84"),
+                        new BigDecimal("3676.84"),
+                        new BigDecimal("734.00"),
                         "AED",
                         LocalDateTime.of(2024, 5, 29, 9, 15),
-                        new BigDecimal("11025.00"), // ~3000.00 USD
-                        new BigDecimal("367.50"), // ~100.00 USD
+                        new BigDecimal("11025.00"),
+                        new BigDecimal("367.50"),
                         BigDecimal.ZERO,
                         BigDecimal.ZERO
                 );
@@ -319,6 +779,40 @@ public class BankingService {
         };
     }
 
+    // Helper methods
+    private BigDecimal calculateRemittanceFees(BigDecimal amount, String currency) {
+        BigDecimal feeRate = switch (currency) {
+            case "USD" -> new BigDecimal("0.005"); // 0.5%
+            case "EUR" -> new BigDecimal("0.006"); // 0.6%
+            case "GBP" -> new BigDecimal("0.007"); // 0.7%
+            default -> new BigDecimal("0.008"); // 0.8%
+        };
+        return amount.multiply(feeRate).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal getExchangeRate(String currency) {
+        return switch (currency) {
+            case "USD" -> new BigDecimal("3.675");
+            case "EUR" -> new BigDecimal("4.12");
+            case "GBP" -> new BigDecimal("4.85");
+            case "JPY" -> new BigDecimal("0.025");
+            default -> new BigDecimal("1.00");
+        };
+    }
+
+    private BigDecimal getExchangeRate(String fromCurrency, String toCurrency) {
+        if (fromCurrency.equals(toCurrency)) return BigDecimal.ONE;
+
+        // Convert to AED first, then to target currency
+        BigDecimal fromRate = getExchangeRate(fromCurrency);
+        BigDecimal toRate = getExchangeRate(toCurrency);
+
+        return fromRate.divide(toRate, 6, RoundingMode.HALF_UP);
+    }
+
+    // Continue with other original data methods (getCustomerProfileData, getTransactionsData, etc.)
+    // [Truncated for space - include all the original methods from the previous BankingService]
+
     private GetCustomerProfileResponse getCustomerProfileData(String customerId) {
         return switch (customerId) {
             case "Aman" -> {
@@ -367,7 +861,7 @@ public class BankingService {
                         "Emirates Technology Solutions",
                         "Senior Software Engineer",
                         "Technology",
-                        new BigDecimal("22000.00"), // AED monthly
+                        new BigDecimal("22000.00"),
                         LocalDate.of(2020, 1, 15),
                         "FULL_TIME"
                 );

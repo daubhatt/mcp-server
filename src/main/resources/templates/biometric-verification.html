@@ -1,0 +1,118 @@
+<!-- biometric-verification.html -->
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biometric Verification - Banking Portal</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-br from-purple-50 to-pink-100 min-h-screen">
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-8">
+        <div class="text-center mb-8">
+            <div class="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-fingerprint text-3xl text-purple-600"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Biometric Verification</h1>
+            <p class="text-gray-600">Complete biometric authentication for high-value transfers</p>
+        </div>
+
+        <div class="space-y-6">
+            <!-- Customer Info -->
+            <div class="bg-gray-50 rounded-lg p-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Verification Details</h3>
+                <p><strong>Customer ID:</strong> <span th:text="${customerId}">CUSTOMER_ID</span></p>
+                <p><strong>Transaction ID:</strong> <span th:text="${transactionId}">TRANSACTION_ID</span></p>
+                <p><strong>Security Level:</strong> High-Value Transfer Authentication</p>
+            </div>
+
+            <!-- Biometric Options -->
+            <div class="space-y-4">
+                <h3 class="font-semibold text-gray-700">Available Authentication Methods</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="border-2 border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 hover:bg-purple-50 transition-all cursor-pointer" onclick="selectMethod('fingerprint')">
+                        <i class="fas fa-fingerprint text-3xl text-purple-600 mb-3"></i>
+                        <h4 class="font-semibold text-gray-700">Fingerprint</h4>
+                        <p class="text-sm text-gray-600 mt-1">Touch sensor authentication</p>
+                        <div class="mt-3">
+                            <span class="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
+                            <span class="text-xs text-green-600 ml-1">Available</span>
+                        </div>
+                    </div>
+                    <div class="border-2 border-gray-300 rounded-lg p-6 text-center hover:border-purple-400 hover:bg-purple-50 transition-all cursor-pointer" onclick="selectMethod('face')">
+                        <i class="fas fa-user-circle text-3xl text-purple-600 mb-3"></i>
+                        <h4 class="font-semibold text-gray-700">Face Recognition</h4>
+                        <p class="text-sm text-gray-600 mt-1">Camera-based verification</p>
+                        <div class="mt-3">
+                            <span class="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
+                            <span class="text-xs text-green-600 ml-1">Available</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security Info -->
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+                <div class="flex">
+                    <i class="fas fa-info-circle text-blue-400 mt-1"></i>
+                    <div class="ml-3">
+                        <p class="text-sm text-blue-700">
+                            <strong>Security Notice:</strong> This elevated authentication is required for transfers above AED 15,000 and will remain active for 24 hours.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="text-center pt-4">
+                <button id="submitBiometricBtn" class="bg-purple-600 text-white px-8 py-3 rounded-lg hover:bg-purple-700 transition duration-200 font-semibold" disabled>
+                    <i class="fas fa-shield-alt mr-2"></i>
+                    Complete Biometric Verification
+                </button>
+            </div>
+
+            <!-- Success Message -->
+            <div id="successMessage" class="hidden bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
+                <i class="fas fa-check-circle mr-2"></i>
+                <strong>Biometric Verification Completed!</strong> Return to your chat and type "additional biometric done" to continue with your transaction.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let selectedMethod = null;
+
+    function selectMethod(method) {
+        selectedMethod = method;
+        // Remove previous selections
+        document.querySelectorAll('.border-purple-400').forEach(el => {
+            el.classList.remove('border-purple-400', 'bg-purple-50');
+            el.classList.add('border-gray-300');
+        });
+
+        // Highlight selected method
+        event.currentTarget.classList.remove('border-gray-300');
+        event.currentTarget.classList.add('border-purple-400', 'bg-purple-50');
+
+        // Enable submit button
+        document.getElementById('submitBiometricBtn').disabled = false;
+    }
+
+    document.getElementById('submitBiometricBtn').addEventListener('click', function() {
+        if (!selectedMethod) return;
+
+        // Simulate processing
+        this.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Authenticating...';
+        this.disabled = true;
+
+        setTimeout(() => {
+            this.classList.add('hidden');
+            document.getElementById('successMessage').classList.remove('hidden');
+        }, 3000);
+    });
+</script>
+</body>
+</html>
