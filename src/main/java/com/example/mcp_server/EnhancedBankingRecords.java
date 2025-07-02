@@ -40,9 +40,7 @@ public class EnhancedBankingRecords {
 
     public record CompleteRemittanceRequest(
             String transactionId,
-            String customerId,
-            Boolean kycCompleted,
-            Boolean biometricCompleted
+            String customerId
     ) {}
 
     public record RemittanceExecutionResponse(

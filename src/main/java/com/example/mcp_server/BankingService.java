@@ -33,6 +33,8 @@ public class BankingService {
     private final Map<String, Set<String>> customerCurrencyAccounts = new ConcurrentHashMap<>();
     private final Map<String, String> pendingTransactions = new ConcurrentHashMap<>();
 
+    private record ValidationResult(String status, String message, String nextAction, String pendingRequirements) {}
+
     // Initialize default states
     {
         // Default KYC statuses
@@ -115,91 +117,6 @@ public class BankingService {
 
     // ======== REMITTANCE TOOLS ========
 
-    @Tool(description = "Initiate an international remittance transfer")
-    public RemittanceValidationResponse initiateRemittance(InitiateRemittanceRequest request, ToolContext context) {
-        log.info("Initiating remittance for customer: {} to {}", request.customerId(), request.recipientCountry());
-
-        // Generate transaction ID
-        String transactionId = "REM" + System.currentTimeMillis();
-
-        // Check customer KYC status
-        String kycStatus = customerKycStatus.getOrDefault(request.customerId(), "BASIC");
-
-        // Check token elevation status
-        String tokenStatus = customerTokenStatus.getOrDefault(request.customerId(), "BASIC");
-
-        // Calculate fees and exchange rate
-        BigDecimal fees = calculateRemittanceFees(request.amount(), request.currency());
-        BigDecimal exchangeRate = getExchangeRate(request.currency());
-
-        // High value threshold (equivalent to 15,000 AED)
-        BigDecimal highValueThreshold = new BigDecimal("15000");
-        boolean isHighValue = request.amount().compareTo(highValueThreshold) > 0;
-
-        // International transfer requires ENHANCED KYC
-        if ("BASIC".equals(kycStatus)) {
-            String kycUrl = "http://localhost:8081/kyc-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
-
-            // Store pending transaction for later completion
-            pendingTransactions.put(transactionId, request.customerId() + "|KYC_PENDING");
-
-            return new RemittanceValidationResponse(
-                    transactionId,
-                    "KYC_REQUIRED",
-                    "Enhanced KYC verification required for international transfers. Please complete the verification process and return to continue.",
-                    request.amount(),
-                    request.currency(),
-                    fees,
-                    exchangeRate,
-                    "2-3 business days after KYC completion",
-                    kycUrl,
-                    null,
-                    List.of("Passport", "Employment Certificate", "Salary Certificate"),
-                    LocalDateTime.now()
-            );
-        }
-
-        // High value transfers require token elevation
-        if (isHighValue && "BASIC".equals(tokenStatus)) {
-            String biometricUrl = "http://localhost:8081/biometric-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
-
-            // Store pending transaction for later completion
-            pendingTransactions.put(transactionId, request.customerId() + "|BIOMETRIC_PENDING");
-
-            return new RemittanceValidationResponse(
-                    transactionId,
-                    "TOKEN_ELEVATION_REQUIRED",
-                    "Biometric verification required for high-value transfers above AED 15,000. Please complete the biometric authentication and return to continue.",
-                    request.amount(),
-                    request.currency(),
-                    fees,
-                    exchangeRate,
-                    "1-2 business days after verification",
-                    null,
-                    biometricUrl,
-                    List.of(),
-                    LocalDateTime.now()
-            );
-        }
-
-        // All validations passed - can proceed directly
-        pendingTransactions.put(transactionId, request.customerId() + "|VALIDATED");
-
-        return new RemittanceValidationResponse(
-                transactionId,
-                "VALIDATED",
-                "Transfer validated successfully. You can proceed with the remittance.",
-                request.amount(),
-                request.currency(),
-                fees,
-                exchangeRate,
-                "1-2 business days",
-                null,
-                null,
-                List.of(),
-                LocalDateTime.now()
-        );
-    }
 
     @Tool(description = "Check the status of a pending remittance transaction")
     public PendingTransactionStatusResponse checkPendingTransaction(String transactionId, ToolContext context) {
@@ -241,6 +158,86 @@ public class BankingService {
         };
     }
 
+    @Tool(description = "Initiate an international remittance transfer")
+    public RemittanceValidationResponse initiateRemittance(InitiateRemittanceRequest request, ToolContext context) {
+        log.info("Initiating remittance for customer: {} to {}", request.customerId(), request.recipientCountry());
+
+        // Generate transaction ID
+        String transactionId = "REM" + System.currentTimeMillis();
+
+        // Check ALL requirements upfront
+        String kycStatus = customerKycStatus.getOrDefault(request.customerId(), "BASIC");
+        String tokenStatus = customerTokenStatus.getOrDefault(request.customerId(), "BASIC");
+
+        // Calculate fees and exchange rate
+        BigDecimal fees = calculateRemittanceFees(request.amount(), request.currency());
+        BigDecimal exchangeRate = getExchangeRate(request.currency());
+
+        // Determine requirements
+        boolean isInternational = !request.recipientCountry().equalsIgnoreCase("UAE");
+        BigDecimal highValueThreshold = new BigDecimal("15000");
+        boolean isHighValue = request.amount().compareTo(highValueThreshold) > 0;
+
+        boolean needsKyc = isInternational && "BASIC".equals(kycStatus);
+        boolean needsBiometric = isHighValue && "BASIC".equals(tokenStatus);
+
+        String kycUrl = null;
+        String biometricUrl = null;
+        List<String> requiredDocuments = List.of();
+        String status;
+        String message;
+
+        if (needsKyc || needsBiometric) {
+            // Store pending transaction with requirements
+            String requirements = buildRequirementsString(needsKyc, needsBiometric);
+            pendingTransactions.put(transactionId, request.customerId() + "|" + requirements);
+
+            if (needsKyc) {
+                kycUrl = "http://localhost:8081/kyc-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
+                requiredDocuments = List.of("Passport", "Employment Certificate", "Salary Certificate");
+            }
+
+            if (needsBiometric) {
+                biometricUrl = "http://localhost:8081/biometric-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
+            }
+
+            // Build comprehensive message
+            StringBuilder msgBuilder = new StringBuilder("Additional verification required: ");
+            if (needsKyc && needsBiometric) {
+                status = "VERIFICATION_REQUIRED";
+                msgBuilder.append("Enhanced KYC verification for international transfers AND biometric authentication for high-value transfers. Complete both verifications and return to continue.");
+            } else if (needsKyc) {
+                status = "KYC_REQUIRED";
+                msgBuilder.append("Enhanced KYC verification required for international transfers. Complete the verification and return to continue.");
+            } else {
+                status = "TOKEN_ELEVATION_REQUIRED";
+                msgBuilder.append("Biometric verification required for high-value transfers above AED 15,000. Complete the authentication and return to continue.");
+            }
+            message = msgBuilder.toString();
+
+        } else {
+            // All validations passed - can proceed directly
+            pendingTransactions.put(transactionId, request.customerId() + "|VALIDATED");
+            status = "VALIDATED";
+            message = "Transfer validated successfully. You can proceed with the remittance.";
+        }
+
+        return new RemittanceValidationResponse(
+                transactionId,
+                status,
+                message,
+                request.amount(),
+                request.currency(),
+                fees,
+                exchangeRate,
+                calculateDeliveryTime(needsKyc, needsBiometric),
+                kycUrl,
+                biometricUrl,
+                requiredDocuments,
+                LocalDateTime.now()
+        );
+    }
+
     @Tool(description = "Complete a remittance after all verifications are done. Call this when user says 'kyc done' or 'biometric done' or similar confirmation")
     public RemittanceExecutionResponse completeRemittance(CompleteRemittanceRequest request, ToolContext context) {
         log.info("Completing remittance {} for customer: {}", request.transactionId(), request.customerId());
@@ -263,7 +260,7 @@ public class BankingService {
 
         String[] parts = pendingData.split("\\|");
         String customerId = parts[0];
-        String status = parts.length > 1 ? parts[1] : "UNKNOWN";
+        String requirements = parts.length > 1 ? parts[1] : "UNKNOWN";
 
         // Verify customer matches
         if (!customerId.equals(request.customerId())) {
@@ -280,48 +277,119 @@ public class BankingService {
             );
         }
 
-        // Check if user indicated they completed KYC
-        if ("KYC_PENDING".equals(status) && Boolean.TRUE.equals(request.kycCompleted())) {
-            // Simulate KYC completion by upgrading status
-            customerKycStatus.put(customerId, "ENHANCED");
-            pendingTransactions.put(request.transactionId(), customerId + "|VALIDATED");
+        // Now validate current status against original requirements
+        ValidationResult validation = validateTransaction(customerId, request.transactionId(), requirements);
 
-            log.info("Customer {} KYC upgraded to ENHANCED", customerId);
+        return switch (validation.status()) {
+            case "VALIDATED" -> // All requirements satisfied - proceed with transfer
+                // Clean up
+                    proceedWithRemittance(request.transactionId(), customerId);
+            case "PARTIAL_COMPLETE" -> {
+                // Some requirements still pending
+                pendingTransactions.put(request.transactionId(), customerId + "|" + validation.pendingRequirements());
+                yield new RemittanceExecutionResponse(
+                        request.transactionId(),
+                        null,
+                        "PENDING",
+                        validation.message(),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        validation.nextAction(),
+                        null,
+                        LocalDateTime.now()
+                );
+            }
+            default -> new RemittanceExecutionResponse(
+                    request.transactionId(),
+                    null,
+                    "FAILED",
+                    "Validation failed: " + validation.message(),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null,
+                    null,
+                    LocalDateTime.now()
+            );
+        };
+    }
 
-            // Check if this was the only requirement
-            String tokenStatus = customerTokenStatus.getOrDefault(customerId, "BASIC");
-            // If no high-value requirement or already elevated, we can proceed
-            return proceedWithRemittance(request.transactionId(), customerId);
+    // Helper method to build requirements string
+    private String buildRequirementsString(boolean needsKyc, boolean needsBiometric) {
+        if (needsKyc && needsBiometric) {
+            return "NEEDS_KYC_AND_BIOMETRIC";
+        } else if (needsKyc) {
+            return "NEEDS_KYC";
+        } else if (needsBiometric) {
+            return "NEEDS_BIOMETRIC";
+        } else {
+            return "VALIDATED";
+        }
+    }
+
+    // Comprehensive validation based on original requirements
+    private ValidationResult validateTransaction(String customerId, String transactionId, String originalRequirements) {
+        String details = pendingTransactions.get(transactionId);
+        if (details == null) {
+            return new ValidationResult("FAILED", "Transaction details not found", null, null);
         }
 
-        // Check if user indicated they completed biometric
-        if ("BIOMETRIC_PENDING".equals(status) && Boolean.TRUE.equals(request.biometricCompleted())) {
-            // Simulate biometric completion by elevating token
-            customerTokenStatus.put(customerId, "ELEVATED");
-            pendingTransactions.put(request.transactionId(), customerId + "|VALIDATED");
+        String currentKycStatus = customerKycStatus.getOrDefault(customerId, "BASIC");
+        String currentTokenStatus = customerTokenStatus.getOrDefault(customerId, "BASIC");
 
-            log.info("Customer {} token elevated to ELEVATED", customerId);
+        // Check what was originally required vs current status
+        boolean originallyNeededKyc = originalRequirements.contains("KYC");
+        boolean originallyNeededBiometric = originalRequirements.contains("Biometric");
 
-            return proceedWithRemittance(request.transactionId(), customerId);
+        boolean kycNowSatisfied = !originallyNeededKyc || "ENHANCED".equals(currentKycStatus);
+        boolean biometricNowSatisfied = !originallyNeededBiometric || "ELEVATED".equals(currentTokenStatus);
+
+        if (kycNowSatisfied && biometricNowSatisfied) {
+            return new ValidationResult("VALIDATED", "All requirements completed successfully", null, null);
         }
 
-        // Check if transaction is ready for completion
-        if ("VALIDATED".equals(status)) {
-            return proceedWithRemittance(request.transactionId(), customerId);
+        // Build message for remaining requirements
+        StringBuilder pendingMsg = new StringBuilder("Still pending: ");
+        StringBuilder nextAction = new StringBuilder();
+        String newRequirements = originalRequirements;
+
+        if (!kycNowSatisfied) {
+            pendingMsg.append("KYC verification ");
+            nextAction.append("Complete KYC verification and confirm with 'kyc done'");
         }
 
-        // Still pending some requirement
-        return new RemittanceExecutionResponse(
-                request.transactionId(),
-                null,
-                "PENDING",
-                "Transaction not ready for completion. Status: " + status + ". Required action: " + getNextRequiredAction(status),
-                BigDecimal.ZERO,
-                BigDecimal.ZERO,
-                null,
-                null,
-                LocalDateTime.now()
-        );
+        if (!biometricNowSatisfied) {
+            if (!kycNowSatisfied) {
+                pendingMsg.append("and ");
+                nextAction.append(" and ");
+            }
+            pendingMsg.append("biometric verification");
+            nextAction.append("Complete biometric verification and confirm with 'additional biometric done'");
+        }
+
+        // Update requirements string to reflect what's still needed
+        if (kycNowSatisfied && originallyNeededKyc) {
+            newRequirements = newRequirements.replace("NEEDS_KYC_AND_BIOMETRIC", "NEEDS_BIOMETRIC")
+                    .replace("NEEDS_KYC", "VALIDATED");
+        }
+        if (biometricNowSatisfied && originallyNeededBiometric) {
+            newRequirements = newRequirements.replace("NEEDS_KYC_AND_BIOMETRIC", "NEEDS_KYC")
+                    .replace("NEEDS_BIOMETRIC", "VALIDATED");
+        }
+
+        return new ValidationResult("PARTIAL_COMPLETE", pendingMsg.toString(), nextAction.toString(), newRequirements);
+    }
+
+    // Helper method for delivery time estimation
+    private String calculateDeliveryTime(boolean needsKyc, boolean needsBiometric) {
+        if (needsKyc && needsBiometric) {
+            return "2-3 business days after both verifications completed";
+        } else if (needsKyc) {
+            return "2-3 business days after KYC completion";
+        } else if (needsBiometric) {
+            return "1-2 business days after biometric verification";
+        } else {
+            return "1-2 business days";
+        }
     }
 
     private RemittanceExecutionResponse proceedWithRemittance(String transactionId, String customerId) {
@@ -413,43 +481,6 @@ public class BankingService {
                 fees,
                 LocalDateTime.now()
         );
-    }
-
-    @Tool(description = "Get customer KYC status and limits")
-    public KycStatusResponse getKycStatus(CustomerKycStatusRequest request, ToolContext context) {
-        log.info("Getting KYC status for customer: {}", request.customerId());
-
-        String kycLevel = customerKycStatus.getOrDefault(request.customerId(), "BASIC");
-
-        return switch (kycLevel) {
-            case "BASIC" -> new KycStatusResponse(
-                    request.customerId(),
-                    "BASIC",
-                    false, // No international transfers
-                    new BigDecimal("5000.00"), // Daily limit
-                    new BigDecimal("50000.00"), // Monthly limit
-                    List.of("Iran", "North Korea", "Syria"), // Restricted countries
-                    LocalDateTime.now().minusDays(30)
-            );
-            case "ENHANCED" -> new KycStatusResponse(
-                    request.customerId(),
-                    "ENHANCED",
-                    true, // International transfers allowed
-                    new BigDecimal("25000.00"), // Daily limit
-                    new BigDecimal("500000.00"), // Monthly limit
-                    List.of("Iran", "North Korea"), // Fewer restrictions
-                    LocalDateTime.now().minusDays(10)
-            );
-            default -> new KycStatusResponse(
-                    request.customerId(),
-                    "PREMIUM",
-                    true,
-                    new BigDecimal("100000.00"),
-                    new BigDecimal("2000000.00"),
-                    List.of(), // No restrictions
-                    LocalDateTime.now().minusDays(5)
-            );
-        };
     }
 
     @Tool(description = "Get remittance transaction history")
