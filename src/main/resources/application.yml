@@ -28,3 +28,6 @@ logging:
   level:
     org.springframework.web: INFO
 
+app:
+  server:
+    url: ${SERVER_URL:http://localhost:8081}
