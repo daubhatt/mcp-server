@@ -113,7 +113,7 @@ public class BankingService {
         return getInvestmentPortfolioData(investmentPortfolioRequest.customerId());
     }
 
-    // ======== NEW REMITTANCE TOOLS ========
+    // ======== REMITTANCE TOOLS ========
 
     @Tool(description = "Initiate an international remittance transfer")
     public RemittanceValidationResponse initiateRemittance(InitiateRemittanceRequest request, ToolContext context) {
@@ -201,65 +201,6 @@ public class BankingService {
         );
     }
 
-    // NEW TOOL: Process KYC completion from customer
-    @Tool(description = "Process customer KYC completion confirmation after external verification")
-    public SimulationStateResponse processKycCompletion(String customerId, ToolContext context) {
-        log.info("Processing KYC completion for customer: {}", customerId);
-
-        String previousStatus = customerKycStatus.getOrDefault(customerId, "BASIC");
-
-        if ("ENHANCED".equals(previousStatus)) {
-            return new SimulationStateResponse(
-                    customerId,
-                    "KYC_STATUS",
-                    previousStatus,
-                    "ENHANCED",
-                    "Customer already has ENHANCED KYC status."
-            );
-        }
-
-        // Upgrade customer KYC status
-        customerKycStatus.put(customerId, "ENHANCED");
-
-        return new SimulationStateResponse(
-                customerId,
-                "KYC_UPGRADE",
-                previousStatus,
-                "ENHANCED",
-                "KYC successfully upgraded to ENHANCED level. International transfers are now available with daily limits up to AED 25,000."
-        );
-    }
-
-    // NEW TOOL: Process biometric completion from customer
-    @Tool(description = "Process customer biometric verification completion after external authentication")
-    public SimulationStateResponse processBiometricCompletion(String customerId, ToolContext context) {
-        log.info("Processing biometric completion for customer: {}", customerId);
-
-        String previousStatus = customerTokenStatus.getOrDefault(customerId, "BASIC");
-
-        if ("ELEVATED".equals(previousStatus)) {
-            return new SimulationStateResponse(
-                    customerId,
-                    "TOKEN_STATUS",
-                    previousStatus,
-                    "ELEVATED",
-                    "Customer already has ELEVATED token status."
-            );
-        }
-
-        // Elevate customer token status
-        customerTokenStatus.put(customerId, "ELEVATED");
-
-        return new SimulationStateResponse(
-                customerId,
-                "TOKEN_ELEVATION",
-                previousStatus,
-                "ELEVATED",
-                "Token elevated successfully. High-value transfers up to AED 500,000 are now available for 24 hours."
-        );
-    }
-
-    // NEW TOOL: Check pending transaction status
     @Tool(description = "Check the status of a pending remittance transaction")
     public PendingTransactionStatusResponse checkPendingTransaction(String transactionId, ToolContext context) {
         log.info("Checking pending transaction status: {}", transactionId);
@@ -300,18 +241,7 @@ public class BankingService {
         };
     }
 
-    // Add this record to EnhancedBankingRecords.java
-    public record PendingTransactionStatusResponse(
-            String transactionId,
-            String status,
-            String message,
-            String customerId,
-            String nextRequiredAction,
-            LocalDateTime responseTime
-    ) {}
-
-    // UPDATED: Complete remittance method with proper validation
-    @Tool(description = "Complete a remittance after all verifications are done")
+    @Tool(description = "Complete a remittance after all verifications are done. Call this when user says 'kyc done' or 'biometric done' or similar confirmation")
     public RemittanceExecutionResponse completeRemittance(CompleteRemittanceRequest request, ToolContext context) {
         log.info("Completing remittance {} for customer: {}", request.transactionId(), request.customerId());
 
@@ -350,29 +280,59 @@ public class BankingService {
             );
         }
 
-        // Check if transaction is ready for completion
-        if (!"VALIDATED".equals(status)) {
-            return new RemittanceExecutionResponse(
-                    request.transactionId(),
-                    null,
-                    "PENDING",
-                    "Transaction not ready for completion. Status: " + status + ". Required action: " + getNextRequiredAction(status),
-                    BigDecimal.ZERO,
-                    BigDecimal.ZERO,
-                    null,
-                    null,
-                    LocalDateTime.now()
-            );
+        // Check if user indicated they completed KYC
+        if ("KYC_PENDING".equals(status) && Boolean.TRUE.equals(request.kycCompleted())) {
+            // Simulate KYC completion by upgrading status
+            customerKycStatus.put(customerId, "ENHANCED");
+            pendingTransactions.put(request.transactionId(), customerId + "|VALIDATED");
+
+            log.info("Customer {} KYC upgraded to ENHANCED", customerId);
+
+            // Check if this was the only requirement
+            String tokenStatus = customerTokenStatus.getOrDefault(customerId, "BASIC");
+            // If no high-value requirement or already elevated, we can proceed
+            return proceedWithRemittance(request.transactionId(), customerId);
         }
 
+        // Check if user indicated they completed biometric
+        if ("BIOMETRIC_PENDING".equals(status) && Boolean.TRUE.equals(request.biometricCompleted())) {
+            // Simulate biometric completion by elevating token
+            customerTokenStatus.put(customerId, "ELEVATED");
+            pendingTransactions.put(request.transactionId(), customerId + "|VALIDATED");
+
+            log.info("Customer {} token elevated to ELEVATED", customerId);
+
+            return proceedWithRemittance(request.transactionId(), customerId);
+        }
+
+        // Check if transaction is ready for completion
+        if ("VALIDATED".equals(status)) {
+            return proceedWithRemittance(request.transactionId(), customerId);
+        }
+
+        // Still pending some requirement
+        return new RemittanceExecutionResponse(
+                request.transactionId(),
+                null,
+                "PENDING",
+                "Transaction not ready for completion. Status: " + status + ". Required action: " + getNextRequiredAction(status),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                null,
+                LocalDateTime.now()
+        );
+    }
+
+    private RemittanceExecutionResponse proceedWithRemittance(String transactionId, String customerId) {
         // Remove from pending and execute
-        pendingTransactions.remove(request.transactionId());
+        pendingTransactions.remove(transactionId);
 
         // Simulate successful execution
         String referenceNumber = "REF" + System.currentTimeMillis();
 
         return new RemittanceExecutionResponse(
-                request.transactionId(),
+                transactionId,
                 referenceNumber,
                 "PROCESSING",
                 "Remittance initiated successfully. Funds will be credited to recipient within 1-2 business days.",
@@ -538,7 +498,114 @@ public class BankingService {
         );
     }
 
-    // ======== ORIGINAL BANKING DATA METHODS ========
+    // Add this record as a nested class or in EnhancedBankingRecords.java
+    public record PendingTransactionStatusResponse(
+            String transactionId,
+            String status,
+            String message,
+            String customerId,
+            String nextRequiredAction,
+            LocalDateTime responseTime
+    ) {}
+
+    // ======== SIMULATION ENDPOINTS (Non-Tool Methods) ========
+
+    /**
+     * PUBLIC API: Called by simulation pages when user completes KYC
+     * This is NOT a tool - it's called directly by the external KYC page
+     */
+    public SimulationStateResponse processKycCompletion(String customerId) {
+        log.info("Processing KYC completion for customer: {}", customerId);
+
+        String previousStatus = customerKycStatus.getOrDefault(customerId, "BASIC");
+
+        if ("ENHANCED".equals(previousStatus)) {
+            return new SimulationStateResponse(
+                    customerId,
+                    "KYC_STATUS",
+                    previousStatus,
+                    "ENHANCED",
+                    "Customer already has ENHANCED KYC status."
+            );
+        }
+
+        // Upgrade customer KYC status
+        customerKycStatus.put(customerId, "ENHANCED");
+
+        return new SimulationStateResponse(
+                customerId,
+                "KYC_UPGRADE",
+                previousStatus,
+                "ENHANCED",
+                "KYC successfully upgraded to ENHANCED level. International transfers are now available with daily limits up to AED 25,000."
+        );
+    }
+
+    /**
+     * PUBLIC API: Called by simulation pages when user completes biometric
+     * This is NOT a tool - it's called directly by the external biometric page
+     */
+    public SimulationStateResponse processBiometricCompletion(String customerId) {
+        log.info("Processing biometric completion for customer: {}", customerId);
+
+        String previousStatus = customerTokenStatus.getOrDefault(customerId, "BASIC");
+
+        if ("ELEVATED".equals(previousStatus)) {
+            return new SimulationStateResponse(
+                    customerId,
+                    "TOKEN_STATUS",
+                    previousStatus,
+                    "ELEVATED",
+                    "Customer already has ELEVATED token status."
+            );
+        }
+
+        // Elevate customer token status
+        customerTokenStatus.put(customerId, "ELEVATED");
+
+        return new SimulationStateResponse(
+                customerId,
+                "TOKEN_ELEVATION",
+                previousStatus,
+                "ELEVATED",
+                "Token elevated successfully. High-value transfers up to AED 500,000 are now available for 24 hours."
+        );
+    }
+
+    // ======== HELPER METHODS ========
+
+    private BigDecimal calculateRemittanceFees(BigDecimal amount, String currency) {
+        BigDecimal feeRate = switch (currency) {
+            case "USD" -> new BigDecimal("0.005"); // 0.5%
+            case "EUR" -> new BigDecimal("0.006"); // 0.6%
+            case "GBP" -> new BigDecimal("0.007"); // 0.7%
+            default -> new BigDecimal("0.008"); // 0.8%
+        };
+        return amount.multiply(feeRate).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal getExchangeRate(String currency) {
+        return switch (currency) {
+            case "USD" -> new BigDecimal("3.675");
+            case "EUR" -> new BigDecimal("4.12");
+            case "GBP" -> new BigDecimal("4.85");
+            case "JPY" -> new BigDecimal("0.025");
+            default -> new BigDecimal("1.00");
+        };
+    }
+
+    private BigDecimal getExchangeRate(String fromCurrency, String toCurrency) {
+        if (fromCurrency.equals(toCurrency)) return BigDecimal.ONE;
+
+        // Convert to AED first, then to target currency
+        BigDecimal fromRate = getExchangeRate(fromCurrency);
+        BigDecimal toRate = getExchangeRate(toCurrency);
+
+        return fromRate.divide(toRate, 6, RoundingMode.HALF_UP);
+    }
+
+    // Include all the original banking data methods (getAccountsData, getBalanceByAccountData, etc.)
+    // [Previous implementation remains the same - truncated for space]
 
     private GetAccountsResponse getAccountsData(String customerId) {
         if (!CUSTOMER_MAP.containsKey(customerId)) {
@@ -778,40 +845,6 @@ public class BankingService {
             );
         };
     }
-
-    // Helper methods
-    private BigDecimal calculateRemittanceFees(BigDecimal amount, String currency) {
-        BigDecimal feeRate = switch (currency) {
-            case "USD" -> new BigDecimal("0.005"); // 0.5%
-            case "EUR" -> new BigDecimal("0.006"); // 0.6%
-            case "GBP" -> new BigDecimal("0.007"); // 0.7%
-            default -> new BigDecimal("0.008"); // 0.8%
-        };
-        return amount.multiply(feeRate).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal getExchangeRate(String currency) {
-        return switch (currency) {
-            case "USD" -> new BigDecimal("3.675");
-            case "EUR" -> new BigDecimal("4.12");
-            case "GBP" -> new BigDecimal("4.85");
-            case "JPY" -> new BigDecimal("0.025");
-            default -> new BigDecimal("1.00");
-        };
-    }
-
-    private BigDecimal getExchangeRate(String fromCurrency, String toCurrency) {
-        if (fromCurrency.equals(toCurrency)) return BigDecimal.ONE;
-
-        // Convert to AED first, then to target currency
-        BigDecimal fromRate = getExchangeRate(fromCurrency);
-        BigDecimal toRate = getExchangeRate(toCurrency);
-
-        return fromRate.divide(toRate, 6, RoundingMode.HALF_UP);
-    }
-
-    // Continue with other original data methods (getCustomerProfileData, getTransactionsData, etc.)
-    // [Truncated for space - include all the original methods from the previous BankingService]
 
     private GetCustomerProfileResponse getCustomerProfileData(String customerId) {
         return switch (customerId) {

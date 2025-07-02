@@ -1,4 +1,3 @@
-<!-- biometric-verification.html -->
 <!DOCTYPE html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
@@ -78,11 +77,18 @@
                 <i class="fas fa-check-circle mr-2"></i>
                 <strong>Biometric Verification Completed!</strong> Return to your chat and type "additional biometric done" to continue with your transaction.
             </div>
+
+            <!-- Error Message -->
+            <div id="errorMessage" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <strong>Error:</strong> <span id="errorText">Failed to complete biometric verification</span>
+            </div>
         </div>
     </div>
 </div>
 
-<script>
+<script th:inline="javascript">
+    const customerId = /*[[${customerId}]]*/ 'default-customer';
     let selectedMethod = null;
 
     function selectMethod(method) {
@@ -101,17 +107,45 @@
         document.getElementById('submitBiometricBtn').disabled = false;
     }
 
-    document.getElementById('submitBiometricBtn').addEventListener('click', function() {
+    document.getElementById('submitBiometricBtn').addEventListener('click', async function() {
         if (!selectedMethod) return;
 
-        // Simulate processing
-        this.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Authenticating...';
-        this.disabled = true;
+        const button = this;
 
-        setTimeout(() => {
-            this.classList.add('hidden');
-            document.getElementById('successMessage').classList.remove('hidden');
-        }, 3000);
+        // Show processing state
+        button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Authenticating...';
+        button.disabled = true;
+
+        try {
+            // Call the REST API to complete biometric verification
+            const response = await fetch(`/api/simulation/biometric-completion/${customerId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log('Biometric completion result:', result);
+
+                // Hide button and show success
+                button.classList.add('hidden');
+                document.getElementById('successMessage').classList.remove('hidden');
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error completing biometric verification:', error);
+
+            // Show error message
+            document.getElementById('errorText').textContent = error.message;
+            document.getElementById('errorMessage').classList.remove('hidden');
+
+            // Reset button
+            button.innerHTML = '<i class="fas fa-shield-alt mr-2"></i>Complete Biometric Verification';
+            button.disabled = false;
+        }
     });
 </script>
 </body>
