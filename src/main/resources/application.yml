@@ -1,5 +1,14 @@
 # For WebMVC SSE transport (recommended for localhost)
 spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWKS_URL:http://localhost:9090/oauth2/jwks}
+  thymeleaf:
+    cache: false
+    mode: HTML
+    encoding: UTF-8
   main:
     banner-mode: log
     web-application-type: reactive
@@ -16,5 +25,6 @@ server:
 logging:
   pattern:
     console: "%clr(%d{yy-MM-dd E HH:mm:ss.SSS}){blue} %clr(%-5p) %clr(${PID}){faint} %clr(---){faint} %clr([%8.15t]){cyan} %clr(%-40.40logger{0}){blue} %clr(:){red} %clr(%m){faint}%n"
-
+  level:
+    org.springframework.web: INFO
 

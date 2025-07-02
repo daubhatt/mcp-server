@@ -1,6 +1,7 @@
 package com.example.mcp_server;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -24,7 +25,9 @@ public class BankingRecords {
             LocalDateTime openDate,
             LocalDateTime lastActivityDate,
             String branchCode,
-            String productCode
+            String productCode,
+            BigDecimal interestRate,
+            String accountTier
     ) {
     }
 
@@ -52,7 +55,9 @@ public class BankingRecords {
             String currency,
             LocalDateTime lastUpdated,
             BigDecimal overdraftLimit,
-            BigDecimal minimumBalance
+            BigDecimal minimumBalance,
+            BigDecimal monthlyInterestEarned,
+            BigDecimal yearToDateInterestEarned
     ) {
     }
 
@@ -96,7 +101,19 @@ public class BankingRecords {
             String timeZone,
             Boolean emailNotifications,
             Boolean smsNotifications,
-            String statementDelivery
+            String statementDelivery,
+            Boolean paperlessStatements,
+            String communicationLanguage
+    ) {
+    }
+
+    public record EmploymentInfo(
+            String employerName,
+            String jobTitle,
+            String industry,
+            BigDecimal monthlyIncome,
+            LocalDate employmentStartDate,
+            String employmentType
     ) {
     }
 
@@ -113,7 +130,12 @@ public class BankingRecords {
             LocalDateTime joinDate,
             String relationshipManager,
             ContactInfo contactInfo,
-            CustomerPreferences preferences
+            CustomerPreferences preferences,
+            EmploymentInfo employmentInfo,
+            String creditScore,
+            String riskProfile,
+            String nationality,
+            String maritalStatus
     ) {
     }
 
@@ -158,7 +180,10 @@ public class BankingRecords {
             String referenceNumber,
             BigDecimal runningBalance,
             String channel,
-            String location
+            String location,
+            String merchantCategory,
+            String authorizationCode,
+            BigDecimal exchangeRate
     ) {
     }
 
@@ -170,6 +195,255 @@ public class BankingRecords {
             Boolean hasMore,
             String status,
             String message
+    ) {
+    }
+
+    // Loan Records
+    public record GetLoansRequest(
+            String customerId
+    ) {
+    }
+
+    public record Loan(
+            String loanId,
+            String loanNumber,
+            String loanType,
+            String loanSubType,
+            BigDecimal principalAmount,
+            BigDecimal currentBalance,
+            BigDecimal interestRate,
+            String currency,
+            LocalDate startDate,
+            LocalDate maturityDate,
+            LocalDate nextPaymentDate,
+            BigDecimal monthlyPayment,
+            BigDecimal nextPaymentAmount,
+            Integer totalPayments,
+            Integer paymentsRemaining,
+            String status,
+            String purpose,
+            BigDecimal totalInterestPaid,
+            BigDecimal principalPaid,
+            String collateralType,
+            BigDecimal collateralValue,
+            String repaymentFrequency,
+            LocalDate lastPaymentDate,
+            BigDecimal lastPaymentAmount
+    ) {
+    }
+
+    public record GetLoansResponse(
+            String customerId,
+            List<Loan> loans,
+            Integer totalCount,
+            String status,
+            String message
+    ) {
+    }
+
+    // Loan Payment Schedule Records
+    public record GetLoanPaymentScheduleRequest(
+            String loanId,
+            Integer numberOfPayments
+    ) {
+    }
+
+    public record PaymentScheduleItem(
+            Integer paymentNumber,
+            LocalDate paymentDate,
+            BigDecimal paymentAmount,
+            BigDecimal principalAmount,
+            BigDecimal interestAmount,
+            BigDecimal remainingBalance,
+            String status
+    ) {
+    }
+
+    public record GetLoanPaymentScheduleResponse(
+            String loanId,
+            List<PaymentScheduleItem> paymentSchedule,
+            String status,
+            String message
+    ) {
+    }
+
+    // Credit Card Records
+    public record GetCreditCardDetailsRequest(
+            String accountId
+    ) {
+    }
+
+    public record CreditCardDetails(
+            String accountId,
+            String cardNumber,
+            String cardHolderName,
+            String cardType,
+            String cardStatus,
+            BigDecimal creditLimit,
+            BigDecimal availableCredit,
+            BigDecimal currentBalance,
+            BigDecimal minimumPayment,
+            LocalDate statementDate,
+            LocalDate paymentDueDate,
+            BigDecimal interestRate,
+            BigDecimal annualFee,
+            String currency,
+            Integer rewardPoints,
+            BigDecimal cashbackEarned,
+            LocalDate expiryDate,
+            String securityCode
+    ) {
+    }
+
+    public record GetCreditCardDetailsResponse(
+            CreditCardDetails creditCardDetails,
+            String status,
+            String message,
+            LocalDateTime responseTime
+    ) {
+    }
+
+    // Investment Portfolio Records
+    public record GetInvestmentPortfolioRequest(
+            String customerId
+    ) {
+    }
+
+    public record Investment(
+            String investmentId,
+            String instrumentType,
+            String instrumentName,
+            String symbol,
+            BigDecimal quantity,
+            BigDecimal currentPrice,
+            BigDecimal marketValue,
+            BigDecimal purchasePrice,
+            BigDecimal gainLoss,
+            BigDecimal gainLossPercentage,
+            LocalDate purchaseDate,
+            String currency,
+            String riskLevel
+    ) {
+    }
+
+    public record GetInvestmentPortfolioResponse(
+            String customerId,
+            List<Investment> investments,
+            BigDecimal totalPortfolioValue,
+            BigDecimal totalGainLoss,
+            BigDecimal totalGainLossPercentage,
+            String currency,
+            String status,
+            String message
+    ) {
+    }
+
+    // Comprehensive Financial Overview Records
+    public record GetFinancialOverviewRequest(
+            String customerId,
+            Boolean includeTransactionSummary,
+            Boolean includeLoanDetails,
+            Boolean includeInvestmentDetails
+    ) {
+    }
+
+    public record AccountSummary(
+            String accountId,
+            String accountType,
+            String accountName,
+            BigDecimal currentBalance,
+            BigDecimal availableBalance,
+            String currency,
+            BigDecimal interestRate,
+            String status,
+            BigDecimal monthlyInterestEarned
+    ) {
+    }
+
+    public record LoanSummary(
+            String loanId,
+            String loanType,
+            BigDecimal currentBalance,
+            BigDecimal monthlyPayment,
+            LocalDate nextPaymentDate,
+            BigDecimal interestRate,
+            Integer paymentsRemaining,
+            String status
+    ) {
+    }
+
+    public record CreditCardSummary(
+            String accountId,
+            String cardType,
+            BigDecimal currentBalance,
+            BigDecimal creditLimit,
+            BigDecimal availableCredit,
+            BigDecimal utilizationPercentage,
+            LocalDate paymentDueDate,
+            BigDecimal minimumPayment,
+            Integer rewardPoints
+    ) {
+    }
+
+    public record InvestmentSummary(
+            BigDecimal totalPortfolioValue,
+            BigDecimal totalGainLoss,
+            BigDecimal totalGainLossPercentage,
+            Integer numberOfInvestments,
+            String currency
+    ) {
+    }
+
+    public record TransactionSummary(
+            BigDecimal totalDebits30Days,
+            BigDecimal totalCredits30Days,
+            BigDecimal netCashFlow30Days,
+            String topSpendingCategory,
+            BigDecimal topCategoryAmount,
+            Integer pendingTransactionCount,
+            BigDecimal pendingAmount
+    ) {
+    }
+
+    public record FinancialMetrics(
+            BigDecimal totalAssets,
+            BigDecimal totalLiabilities,
+            BigDecimal netWorth,
+            BigDecimal monthlyIncome,
+            BigDecimal monthlyExpenses,
+            BigDecimal debtToIncomeRatio,
+            BigDecimal liquidityRatio,
+            String overallFinancialHealth
+    ) {
+    }
+
+    public record UpcomingPayments(
+            List<String> dueDates,
+            List<String> descriptions,
+            List<BigDecimal> amounts,
+            BigDecimal totalUpcoming30Days
+    ) {
+    }
+
+    public record FinancialOverview(
+            CustomerProfile customerProfile,
+            List<AccountSummary> accounts,
+            List<LoanSummary> loans,
+            List<CreditCardSummary> creditCards,
+            InvestmentSummary investments,
+            TransactionSummary transactionSummary,
+            FinancialMetrics financialMetrics,
+            UpcomingPayments upcomingPayments,
+            String currency,
+            LocalDateTime generatedAt
+    ) {
+    }
+
+    public record GetFinancialOverviewResponse(
+            FinancialOverview financialOverview,
+            String status,
+            String message,
+            LocalDateTime responseTime
     ) {
     }
 }
