@@ -105,7 +105,6 @@ public class EnhancedBankingRecords {
             BigDecimal dailyLimit,
             BigDecimal monthlyLimit,
             List<String> restrictedCountries,
-            String upgradeUrl,
             LocalDateTime lastVerified
     ) {}
 

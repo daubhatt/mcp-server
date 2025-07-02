@@ -429,7 +429,6 @@ public class BankingService {
                     new BigDecimal("5000.00"), // Daily limit
                     new BigDecimal("50000.00"), // Monthly limit
                     List.of("Iran", "North Korea", "Syria"), // Restricted countries
-                    "http://localhost:8081/kyc-verification?customerId=" + request.customerId(),
                     LocalDateTime.now().minusDays(30)
             );
             case "ENHANCED" -> new KycStatusResponse(
@@ -439,7 +438,6 @@ public class BankingService {
                     new BigDecimal("25000.00"), // Daily limit
                     new BigDecimal("500000.00"), // Monthly limit
                     List.of("Iran", "North Korea"), // Fewer restrictions
-                    null,
                     LocalDateTime.now().minusDays(10)
             );
             default -> new KycStatusResponse(
@@ -449,7 +447,6 @@ public class BankingService {
                     new BigDecimal("100000.00"),
                     new BigDecimal("2000000.00"),
                     List.of(), // No restrictions
-                    null,
                     LocalDateTime.now().minusDays(5)
             );
         };
