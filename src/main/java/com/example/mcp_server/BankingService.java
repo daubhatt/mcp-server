@@ -5,6 +5,7 @@ import com.example.mcp_server.EnhancedBankingRecords.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -17,6 +18,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 @Slf4j
 public class BankingService {
+
+    @Value("${app.server.url}")
+    private String serverUrl;
 
     // Map to store multiple customers' data
     private static final Map<String, String> CUSTOMER_MAP = Map.of(
@@ -33,7 +37,8 @@ public class BankingService {
     private final Map<String, Set<String>> customerCurrencyAccounts = new ConcurrentHashMap<>();
     private final Map<String, String> pendingTransactions = new ConcurrentHashMap<>();
 
-    private record ValidationResult(String status, String message, String nextAction, String pendingRequirements) {}
+    private record ValidationResult(String status, String message, String nextAction, String pendingRequirements) {
+    }
 
     // Initialize default states
     {
@@ -193,12 +198,12 @@ public class BankingService {
             pendingTransactions.put(transactionId, request.customerId() + "|" + requirements);
 
             if (needsKyc) {
-                kycUrl = "http://localhost:8081/kyc-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
+                kycUrl = serverUrl + "/kyc-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
                 requiredDocuments = List.of("Passport", "Employment Certificate", "Salary Certificate");
             }
 
             if (needsBiometric) {
-                biometricUrl = "http://localhost:8081/biometric-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
+                biometricUrl = serverUrl + "/biometric-verification?customerId=" + request.customerId() + "&transactionId=" + transactionId;
             }
 
             // Build comprehensive message
@@ -431,7 +436,7 @@ public class BankingService {
                     null
             );
         } else {
-            String openAccountUrl = "http://localhost:8081/account-opening?customerId=" + request.customerId() + "&currency=" + request.currency();
+            String openAccountUrl = serverUrl + "/account-opening?customerId=" + request.customerId() + "&currency=" + request.currency();
 
             return new CurrencyAccountResponse(
                     request.customerId(),
@@ -534,7 +539,8 @@ public class BankingService {
             String customerId,
             String nextRequiredAction,
             LocalDateTime responseTime
-    ) {}
+    ) {
+    }
 
     // ======== SIMULATION ENDPOINTS (Non-Tool Methods) ========
 
